@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pyc
+
+# Project data lives locally only
+data/
