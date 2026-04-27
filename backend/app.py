@@ -28,7 +28,10 @@ def save_json(path, data):
 
 
 def _init_storage():
+    os.makedirs(PROJECTS_DIR, exist_ok=True)
     os.makedirs(ARCHIVED_DIR, exist_ok=True)
+    if not os.path.exists(PROJECTS_INDEX):
+        save_json(PROJECTS_INDEX, [])
     if not os.path.exists(ARCHIVED_INDEX):
         save_json(ARCHIVED_INDEX, [])
 
