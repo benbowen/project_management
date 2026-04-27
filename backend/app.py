@@ -83,21 +83,65 @@ def list_projects():
     return jsonify(load_json(PROJECTS_INDEX))
 
 
-@app.route("/api/review-queue", methods=["GET"])
-def review_queue():
+@app.route("/api/activity", methods=["GET"])
+def activity():
+    since = request.args.get("since")  # YYYY-MM-DD, optional
     result = []
     for entry in load_json(PROJECTS_INDEX):
         project = load_project(entry["id"])
         if not project:
             continue
-        cards = project["columns"].get("ready_for_review", [])
+        sources = list(project["columns"].get("completed", []))
+        sources.extend(project.get("archived", []))
+        for c in sources:
+            ts = c.get("completed_at")
+            if not ts:
+                continue
+            if since and ts[:10] < since:
+                continue
+            result.append({
+                "completed_at": ts,
+                "project_id": project["id"],
+                "project_name": project["name"],
+                "card_id": c["id"],
+                "title": c["title"],
+                "tags": c.get("tags", []),
+            })
+    result.sort(key=lambda r: r["completed_at"], reverse=True)
+    return jsonify(result)
+
+
+def _column_overview(column):
+    result = []
+    for entry in load_json(PROJECTS_INDEX):
+        project = load_project(entry["id"])
+        if not project:
+            continue
+        cards = project["columns"].get(column, [])
         if cards:
             result.append({
                 "project_id": project["id"],
                 "project_name": project["name"],
                 "cards": cards,
             })
-    return jsonify(result)
+    return result
+
+
+@app.route("/api/review-queue", methods=["GET"])
+def review_queue():
+    return jsonify(_column_overview("ready_for_review"))
+
+
+@app.route("/api/in-progress", methods=["GET"])
+def in_progress():
+    return jsonify(_column_overview("in_progress"))
+
+
+@app.route("/api/column-overview/<column>", methods=["GET"])
+def column_overview(column):
+    if column not in COLUMNS:
+        return jsonify({"error": "invalid column"}), 400
+    return jsonify(_column_overview(column))
 
 
 @app.route("/api/projects", methods=["POST"])
@@ -209,6 +253,22 @@ def restore_project(project_id):
     return jsonify(project)
 
 
+@app.route("/api/projects/<project_id>/columns/<column>/reorder", methods=["PUT"])
+def reorder_column(project_id, column):
+    project = load_project(project_id)
+    if not project:
+        return jsonify({"error": "not found"}), 404
+    if column not in COLUMNS:
+        return jsonify({"error": "invalid column"}), 400
+    desired = request.json.get("card_ids", [])
+    by_id = {c["id"]: c for c in project["columns"].get(column, [])}
+    new_order = [by_id[i] for i in desired if i in by_id]
+    leftovers = [c for c in project["columns"].get(column, []) if c["id"] not in set(desired)]
+    project["columns"][column] = new_order + leftovers
+    save_project(project)
+    return jsonify(project["columns"][column])
+
+
 @app.route("/api/projects/<project_id>/cards", methods=["POST"])
 def add_card(project_id):
     project = load_project(project_id)
@@ -221,9 +281,12 @@ def add_card(project_id):
         "title": data["title"],
         "description": data.get("description", ""),
         "plan_path": data.get("plan_path", ""),
+        "due_date": data.get("due_date", ""),
         "created": datetime.now().isoformat()[:10],
         "tags": data.get("tags", []),
     }
+    if column == "completed":
+        card["completed_at"] = datetime.now().isoformat(timespec="seconds")
     project["columns"][column].append(card)
     save_project(project)
     return jsonify(card), 201
@@ -238,13 +301,18 @@ def update_card(project_id, card_id):
     for col, cards in project["columns"].items():
         for card in cards:
             if card["id"] == card_id:
-                for field in ["title", "description", "tags", "plan_path"]:
+                for field in ["title", "description", "tags", "plan_path", "due_date"]:
                     if field in data:
                         card[field] = data[field]
                 # move to different column if requested
                 if "column" in data and data["column"] != col:
+                    new_col = data["column"]
                     project["columns"][col].remove(card)
-                    project["columns"][data["column"]].append(card)
+                    if new_col == "completed":
+                        card["completed_at"] = datetime.now().isoformat(timespec="seconds")
+                    elif col == "completed":
+                        card.pop("completed_at", None)
+                    project["columns"][new_col].append(card)
                 save_project(project)
                 return jsonify(card)
     return jsonify({"error": "card not found"}), 404
