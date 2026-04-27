@@ -9,7 +9,14 @@
 <body>
   <header>
     <h1>Project Board</h1>
-    <button id="btn-new-project" class="btn-primary">+ New Project</button>
+    <div class="header-actions">
+      <button id="btn-show-in-progress" class="btn-secondary">In Progress</button>
+      <button id="btn-show-prioritize" class="btn-secondary">Prioritize</button>
+      <button id="btn-show-activity" class="btn-secondary">Activity</button>
+      <button id="btn-show-review" class="btn-secondary">Review Queue <span id="review-count" class="review-count hidden">0</span></button>
+      <button id="btn-show-archive" class="btn-secondary">Archive</button>
+      <button id="btn-new-project" class="btn-primary">+ New Project</button>
+    </div>
   </header>
 
   <nav id="project-nav">
@@ -42,6 +49,11 @@
           <div class="col-header"><span class="col-dot dot-active"></span>In Progress</div>
           <div class="cards" id="col-in_progress"></div>
           <button class="btn-add-card" data-col="in_progress">+ Add card</button>
+        </div>
+        <div class="column" data-col="ready_for_review">
+          <div class="col-header"><span class="col-dot dot-review"></span>Ready for Review</div>
+          <div class="cards" id="col-ready_for_review"></div>
+          <button class="btn-add-card" data-col="ready_for_review">+ Add card</button>
         </div>
         <div class="column" data-col="next">
           <div class="col-header"><span class="col-dot dot-next"></span>Next</div>
@@ -111,7 +123,7 @@
         <h2 id="modal-project-title">New Project</h2>
         <label>Name <input type="text" id="proj-name" placeholder="My Project"></label>
         <label>Description <textarea id="proj-desc" placeholder="What is this project?"></textarea></label>
-        <label>Repo path <input type="text" id="proj-repo" placeholder="~/repos/my-project"></label>
+        <label>Project folder (absolute path) <input type="text" id="proj-repo" placeholder="/home/you/repos/my-project"></label>
         <div class="modal-actions">
           <button id="btn-modal-cancel" class="btn-secondary">Cancel</button>
           <button id="btn-modal-save" class="btn-primary">Save</button>
@@ -125,6 +137,85 @@
         <div class="modal-actions">
           <button id="btn-restore-cancel" class="btn-secondary">Cancel</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Prioritize -->
+  <div id="modal-prioritize" class="modal hidden">
+    <div class="modal-box modal-box-wide">
+      <h2>Prioritize — What's Next</h2>
+      <p class="modal-hint">Reorder cards within each project's "Next" column. Top of the list = highest priority.</p>
+      <div class="activity-tabs">
+        <button class="prio-tab active" data-col="next">Next</button>
+        <button class="prio-tab" data-col="later">Later</button>
+        <button class="prio-tab" data-col="long_term">Long Term</button>
+      </div>
+      <div id="prioritize-list" class="review-queue-list">
+        <p class="no-archived">Loading...</p>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-prioritize-close" class="btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: In Progress overview -->
+  <div id="modal-in-progress" class="modal hidden">
+    <div class="modal-box modal-box-wide">
+      <h2>In Progress — All Projects</h2>
+      <p class="modal-hint">Everything currently being worked on, sorted with overdue and due-today first.</p>
+      <div id="in-progress-list" class="review-queue-list">
+        <p class="no-archived">Loading...</p>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-in-progress-close" class="btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Activity -->
+  <div id="modal-activity" class="modal hidden">
+    <div class="modal-box modal-box-wide">
+      <h2>Activity</h2>
+      <div class="activity-tabs">
+        <button class="activity-tab active" data-range="today">Today</button>
+        <button class="activity-tab" data-range="week">This Week</button>
+        <button class="activity-tab" data-range="all">All Time</button>
+      </div>
+      <div id="activity-summary" class="activity-summary"></div>
+      <div id="activity-list" class="activity-list">
+        <p class="no-archived">Loading...</p>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-activity-close" class="btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Review queue -->
+  <div id="modal-review" class="modal hidden">
+    <div class="modal-box modal-box-wide">
+      <h2>Review Queue</h2>
+      <p class="modal-hint">Cards across all projects waiting for your review. Approve to move to Completed; Send back to return to In Progress.</p>
+      <div id="review-queue-list" class="review-queue-list">
+        <p class="no-archived">Loading...</p>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-review-close" class="btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Archive view -->
+  <div id="modal-archive" class="modal hidden">
+    <div class="modal-box modal-box-wide">
+      <h2>Archived Projects</h2>
+      <div id="archive-view-list" class="archived-projects-list">
+        <p class="no-archived">Loading...</p>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-archive-view-close" class="btn-secondary">Close</button>
       </div>
     </div>
   </div>
@@ -147,10 +238,13 @@
       <h2 id="modal-card-title">New Card</h2>
       <label>Title <input type="text" id="card-title" placeholder="What needs doing?"></label>
       <label>Description <textarea id="card-desc" placeholder="Details, acceptance criteria, ideas..."></textarea></label>
+      <label>Plan path <input type="text" id="card-plan-path" placeholder="path/to/PLAN.md (optional)"></label>
+      <label>Due date <input type="date" id="card-due-date"></label>
       <label>Tags (comma separated) <input type="text" id="card-tags" placeholder="feature, bug, research"></label>
       <label>Column
         <select id="card-col">
           <option value="in_progress">In Progress</option>
+          <option value="ready_for_review">Ready for Review</option>
           <option value="next">Next</option>
           <option value="later">Later</option>
           <option value="long_term">Long Term</option>

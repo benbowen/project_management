@@ -28,6 +28,7 @@ async function loadProjects() {
     const first = currentProject ? projects.find(p => p.id === currentProject.id) : null;
     await selectProject((first || projects[0]).id);
   }
+  refreshReviewBadge();
 }
 
 function renderTabs() {
@@ -51,7 +52,23 @@ async function selectProject(id) {
 function renderProject() {
   const p = currentProject;
   document.getElementById("project-title").textContent = p.name;
-  document.getElementById("project-repo").textContent = p.repo ? `📁 ${p.repo}` : "";
+  const repoEl = document.getElementById("project-repo");
+  if (p.repo) {
+    repoEl.textContent = `📁 ${p.repo}`;
+    repoEl.title = "Click to copy";
+    repoEl.classList.add("clickable");
+    repoEl.onclick = () => {
+      navigator.clipboard.writeText(p.repo).then(() => {
+        const orig = repoEl.textContent;
+        repoEl.textContent = "📁 Copied!";
+        setTimeout(() => repoEl.textContent = orig, 1200);
+      });
+    };
+  } else {
+    repoEl.textContent = "";
+    repoEl.classList.remove("clickable");
+    repoEl.onclick = null;
+  }
   document.getElementById("project-updated").textContent = `Updated ${p.last_updated}`;
   document.getElementById("project-description").textContent = p.description;
   document.getElementById("notes-area").value = p.notes || "";
@@ -59,7 +76,7 @@ function renderProject() {
   selectedCards.clear();
   updateDeleteSelectedBtn();
 
-  const cols = ["in_progress", "next", "later", "long_term", "recent", "completed"];
+  const cols = ["in_progress", "ready_for_review", "next", "later", "long_term", "recent", "completed"];
   cols.forEach(col => {
     const el = document.getElementById(`col-${col}`);
     el.innerHTML = "";
@@ -114,6 +131,8 @@ function makeCardEl(card, col) {
     body.innerHTML = `
       <div class="card-title">${escHtml(card.title)}</div>
       ${card.description ? `<div class="card-desc">${escHtml(card.description)}</div>` : ""}
+      ${cardPlanHtml(card)}
+      ${cardDueHtml(card)}
       ${card.tags?.length ? `<div class="card-tags">${card.tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join("")}</div>` : ""}
     `;
     div.appendChild(checkbox);
@@ -123,6 +142,8 @@ function makeCardEl(card, col) {
     div.innerHTML = `
       <div class="card-title">${escHtml(card.title)}</div>
       ${card.description ? `<div class="card-desc">${escHtml(card.description)}</div>` : ""}
+      ${cardPlanHtml(card)}
+      ${cardDueHtml(card)}
       ${card.tags?.length ? `<div class="card-tags">${card.tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join("")}</div>` : ""}
     `;
     div.addEventListener("click", () => openEditCard(card, col));
@@ -232,7 +253,314 @@ async function restoreProject(projectId) {
   const project = await api("POST", `/archived-projects/${projectId}/restore`);
   currentProject = project;
   hide("modal-project");
+  hide("modal-archive");
   await loadProjects();
+}
+
+// --- Activity ---
+
+let activityRange = "today";
+
+function activitySinceDate(range) {
+  const now = new Date();
+  if (range === "today") return now.toISOString().slice(0, 10);
+  if (range === "week") {
+    const d = new Date(now);
+    const dow = (d.getDay() + 6) % 7; // Monday=0
+    d.setDate(d.getDate() - dow);
+    return d.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
+function timeBucket(hour) {
+  if (hour < 6) return "night";
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  if (hour < 21) return "evening";
+  return "night";
+}
+
+async function openActivity() {
+  show("modal-activity");
+  await renderActivity();
+}
+
+async function renderActivity() {
+  const list = document.getElementById("activity-list");
+  const summary = document.getElementById("activity-summary");
+  list.innerHTML = "<p class='no-archived'>Loading...</p>";
+  summary.textContent = "";
+
+  document.querySelectorAll(".activity-tab").forEach(t =>
+    t.classList.toggle("active", t.dataset.range === activityRange)
+  );
+
+  const since = activitySinceDate(activityRange);
+  const path = since ? `/activity?since=${since}` : "/activity";
+  const items = await api("GET", path);
+
+  if (items.length === 0) {
+    list.innerHTML = "<p class='no-archived'>Nothing completed in this range.</p>";
+    return;
+  }
+
+  const buckets = { morning: 0, afternoon: 0, evening: 0, night: 0 };
+  items.forEach(it => {
+    const hour = new Date(it.completed_at).getHours();
+    buckets[timeBucket(hour)]++;
+  });
+  summary.innerHTML = `
+    <span class="summary-total">${items.length} completed</span>
+    <span class="summary-buckets">
+      🌅 ${buckets.morning} morning ·
+      ☀️ ${buckets.afternoon} afternoon ·
+      🌆 ${buckets.evening} evening ·
+      🌙 ${buckets.night} night
+    </span>
+  `;
+
+  const groups = {};
+  items.forEach(it => {
+    const date = it.completed_at.slice(0, 10);
+    (groups[date] ||= []).push(it);
+  });
+
+  list.innerHTML = Object.entries(groups).map(([date, entries]) => `
+    <div class="activity-group">
+      <div class="activity-date">${date}</div>
+      ${entries.map(e => {
+        const time = new Date(e.completed_at).toTimeString().slice(0, 5);
+        return `
+          <div class="activity-row">
+            <div class="activity-time">${time}</div>
+            <div class="activity-body">
+              <div class="activity-title">${escHtml(e.title)}</div>
+              <div class="activity-meta">
+                <span class="activity-project">${escHtml(e.project_name)}</span>
+                ${e.tags?.length ? `<span class="card-tags-inline">${e.tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join("")}</span>` : ""}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `).join("");
+}
+
+async function refreshReviewBadge() {
+  const badge = document.getElementById("review-count");
+  try {
+    const queue = await api("GET", "/review-queue");
+    const total = queue.reduce((n, g) => n + g.cards.length, 0);
+    if (total === 0) {
+      badge.classList.add("hidden");
+    } else {
+      badge.textContent = total;
+      badge.classList.remove("hidden");
+    }
+  } catch {
+    badge.classList.add("hidden");
+  }
+}
+
+async function openReviewQueue() {
+  show("modal-review");
+  const list = document.getElementById("review-queue-list");
+  list.innerHTML = "<p class='no-archived'>Loading...</p>";
+  await renderReviewQueue();
+}
+
+async function renderReviewQueue() {
+  const list = document.getElementById("review-queue-list");
+  const queue = await api("GET", "/review-queue");
+  if (queue.length === 0) {
+    list.innerHTML = "<p class='no-archived'>Nothing waiting for review. 🎉</p>";
+    refreshReviewBadge();
+    return;
+  }
+  list.innerHTML = queue.map(group => `
+    <div class="review-group">
+      <div class="review-group-header">
+        <span class="review-group-name">${escHtml(group.project_name)}</span>
+        <span class="review-group-count">${group.cards.length}</span>
+      </div>
+      ${group.cards.map(c => `
+        <div class="review-card" data-project="${group.project_id}" data-card="${c.id}">
+          <div class="review-card-body">
+            <div class="card-title">${escHtml(c.title)}</div>
+            ${c.description ? `<div class="card-desc">${escHtml(c.description)}</div>` : ""}
+            ${cardPlanHtml(c)}
+            ${cardDueHtml(c)}
+            ${c.tags?.length ? `<div class="card-tags">${c.tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join("")}</div>` : ""}
+          </div>
+          <div class="review-card-actions">
+            <button class="btn-secondary btn-review-back" data-project="${group.project_id}" data-card="${c.id}">Send back</button>
+            <button class="btn-primary btn-review-approve" data-project="${group.project_id}" data-card="${c.id}">Approve</button>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `).join("");
+
+  list.querySelectorAll(".btn-review-approve").forEach(btn =>
+    btn.addEventListener("click", () => moveReviewCard(btn.dataset.project, btn.dataset.card, "completed"))
+  );
+  list.querySelectorAll(".btn-review-back").forEach(btn =>
+    btn.addEventListener("click", () => moveReviewCard(btn.dataset.project, btn.dataset.card, "in_progress"))
+  );
+  refreshReviewBadge();
+}
+
+// --- Prioritize ---
+
+let prioritizeColumn = "next";
+
+async function openPrioritize() {
+  show("modal-prioritize");
+  await renderPrioritize();
+}
+
+async function renderPrioritize() {
+  const list = document.getElementById("prioritize-list");
+  list.innerHTML = "<p class='no-archived'>Loading...</p>";
+
+  document.querySelectorAll(".prio-tab").forEach(t =>
+    t.classList.toggle("active", t.dataset.col === prioritizeColumn)
+  );
+
+  const groups = await api("GET", `/column-overview/${prioritizeColumn}`);
+  if (groups.length === 0) {
+    list.innerHTML = "<p class='no-archived'>Nothing in this column across any project.</p>";
+    return;
+  }
+
+  list.innerHTML = groups.map(group => `
+    <div class="review-group" data-project="${group.project_id}">
+      <div class="review-group-header">
+        <span class="review-group-name">${escHtml(group.project_name)}</span>
+        <span class="review-group-count">${group.cards.length}</span>
+      </div>
+      ${group.cards.map((c, i) => `
+        <div class="prio-card" data-project="${group.project_id}" data-card="${c.id}" data-index="${i}">
+          <div class="prio-rank">${i + 1}</div>
+          <div class="review-card-body">
+            <div class="card-title">${escHtml(c.title)}</div>
+            ${c.description ? `<div class="card-desc">${escHtml(c.description)}</div>` : ""}
+            ${cardPlanHtml(c)}
+            ${cardDueHtml(c)}
+            ${c.tags?.length ? `<div class="card-tags">${c.tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join("")}</div>` : ""}
+          </div>
+          <div class="prio-controls">
+            <button class="btn-prio-up" ${i === 0 ? "disabled" : ""} data-project="${group.project_id}" data-card="${c.id}">▲</button>
+            <button class="btn-prio-down" ${i === group.cards.length - 1 ? "disabled" : ""} data-project="${group.project_id}" data-card="${c.id}">▼</button>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `).join("");
+
+  list.querySelectorAll(".btn-prio-up").forEach(btn =>
+    btn.addEventListener("click", () => moveCardInPriority(btn.dataset.project, btn.dataset.card, -1))
+  );
+  list.querySelectorAll(".btn-prio-down").forEach(btn =>
+    btn.addEventListener("click", () => moveCardInPriority(btn.dataset.project, btn.dataset.card, +1))
+  );
+}
+
+async function moveCardInPriority(projectId, cardId, delta) {
+  const project = await api("GET", `/projects/${projectId}`);
+  const cards = project.columns[prioritizeColumn] || [];
+  const i = cards.findIndex(c => c.id === cardId);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= cards.length) return;
+  [cards[i], cards[j]] = [cards[j], cards[i]];
+  await api("PUT", `/projects/${projectId}/columns/${prioritizeColumn}/reorder`, {
+    card_ids: cards.map(c => c.id),
+  });
+  if (currentProject && currentProject.id === projectId) {
+    currentProject = await api("GET", `/projects/${projectId}`);
+    renderProject();
+  }
+  await renderPrioritize();
+}
+
+async function openInProgress() {
+  show("modal-in-progress");
+  const list = document.getElementById("in-progress-list");
+  list.innerHTML = "<p class='no-archived'>Loading...</p>";
+  const groups = await api("GET", "/in-progress");
+  if (groups.length === 0) {
+    list.innerHTML = "<p class='no-archived'>Nothing in progress right now.</p>";
+    return;
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const dueRank = c => {
+    if (!c.due_date) return 2;
+    if (c.due_date < today) return 0;
+    if (c.due_date === today) return 1;
+    return 2;
+  };
+
+  list.innerHTML = groups.map(group => {
+    const sorted = [...group.cards].sort((a, b) => {
+      const r = dueRank(a) - dueRank(b);
+      if (r !== 0) return r;
+      return (a.due_date || "9999-99-99").localeCompare(b.due_date || "9999-99-99");
+    });
+    return `
+      <div class="review-group">
+        <div class="review-group-header">
+          <span class="review-group-name">${escHtml(group.project_name)}</span>
+          <span class="review-group-count">${sorted.length}</span>
+        </div>
+        ${sorted.map(c => `
+          <div class="review-card">
+            <div class="review-card-body">
+              <div class="card-title">${escHtml(c.title)}</div>
+              ${c.description ? `<div class="card-desc">${escHtml(c.description)}</div>` : ""}
+              ${cardPlanHtml(c)}
+              ${cardDueHtml(c)}
+              ${c.tags?.length ? `<div class="card-tags">${c.tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join("")}</div>` : ""}
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }).join("");
+}
+
+async function moveReviewCard(projectId, cardId, column) {
+  await api("PUT", `/projects/${projectId}/cards/${cardId}`, { column });
+  if (currentProject && currentProject.id === projectId) {
+    currentProject = await api("GET", `/projects/${projectId}`);
+    renderProject();
+  }
+  await renderReviewQueue();
+}
+
+async function openArchiveView() {
+  show("modal-archive");
+  const list = document.getElementById("archive-view-list");
+  list.innerHTML = "<p class='no-archived'>Loading...</p>";
+  const archived = await api("GET", "/archived-projects");
+  if (archived.length === 0) {
+    list.innerHTML = "<p class='no-archived'>No archived projects.</p>";
+    return;
+  }
+  list.innerHTML = archived.map(p => `
+    <div class="archived-project-row">
+      <div class="archived-project-info">
+        <div class="archived-project-name">${escHtml(p.name)}</div>
+        <div class="archived-project-date">Archived ${p.archived_date}</div>
+      </div>
+      <button class="btn-primary btn-restore-archive" data-id="${p.id}">Restore</button>
+    </div>
+  `).join("");
+  list.querySelectorAll(".btn-restore-archive").forEach(btn =>
+    btn.addEventListener("click", () => restoreProject(btn.dataset.id))
+  );
 }
 
 function openNewProject() {
@@ -347,6 +675,8 @@ function openAddCard(col) {
   document.getElementById("modal-card-title").textContent = "New Card";
   document.getElementById("card-title").value = "";
   document.getElementById("card-desc").value = "";
+  document.getElementById("card-plan-path").value = "";
+  document.getElementById("card-due-date").value = "";
   document.getElementById("card-tags").value = "";
   document.getElementById("card-col").value = col;
   show("modal-card");
@@ -359,6 +689,8 @@ function openEditCard(card, col) {
   document.getElementById("modal-card-title").textContent = "Edit Card";
   document.getElementById("card-title").value = card.title;
   document.getElementById("card-desc").value = card.description || "";
+  document.getElementById("card-plan-path").value = card.plan_path || "";
+  document.getElementById("card-due-date").value = card.due_date || "";
   document.getElementById("card-tags").value = (card.tags || []).join(", ");
   document.getElementById("card-col").value = col;
   show("modal-card");
@@ -371,6 +703,8 @@ async function saveCard() {
   const data = {
     title,
     description: document.getElementById("card-desc").value.trim(),
+    plan_path: document.getElementById("card-plan-path").value.trim(),
+    due_date: document.getElementById("card-due-date").value,
     tags: document.getElementById("card-tags").value.split(",").map(t => t.trim()).filter(Boolean),
     column: document.getElementById("card-col").value,
   };
@@ -382,6 +716,7 @@ async function saveCard() {
   hide("modal-card");
   currentProject = await api("GET", `/projects/${currentProject.id}`);
   renderProject();
+  refreshReviewBadge();
 }
 
 async function deleteCard() {
@@ -428,6 +763,18 @@ function escHtml(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
+function cardPlanHtml(card) {
+  if (!card.plan_path) return "";
+  return `<div class="card-plan" title="${escHtml(card.plan_path)}">📄 ${escHtml(card.plan_path)}</div>`;
+}
+
+function cardDueHtml(card) {
+  if (!card.due_date) return "";
+  const today = new Date().toISOString().slice(0, 10);
+  const cls = card.due_date < today ? "due-overdue" : card.due_date === today ? "due-today" : "";
+  return `<div class="card-due ${cls}">📅 ${escHtml(card.due_date)}</div>`;
+}
+
 function flashSaved(btnId) {
   const btn = document.getElementById(btnId);
   const orig = btn.textContent;
@@ -438,6 +785,22 @@ function flashSaved(btnId) {
 // --- Wire up events ---
 
 document.getElementById("btn-new-project").addEventListener("click", openNewProject);
+document.getElementById("btn-show-archive").addEventListener("click", openArchiveView);
+document.getElementById("btn-archive-view-close").addEventListener("click", () => hide("modal-archive"));
+document.getElementById("btn-show-review").addEventListener("click", openReviewQueue);
+document.getElementById("btn-review-close").addEventListener("click", () => hide("modal-review"));
+document.getElementById("btn-show-activity").addEventListener("click", openActivity);
+document.getElementById("btn-activity-close").addEventListener("click", () => hide("modal-activity"));
+document.getElementById("btn-show-in-progress").addEventListener("click", openInProgress);
+document.getElementById("btn-in-progress-close").addEventListener("click", () => hide("modal-in-progress"));
+document.getElementById("btn-show-prioritize").addEventListener("click", openPrioritize);
+document.getElementById("btn-prioritize-close").addEventListener("click", () => hide("modal-prioritize"));
+document.querySelectorAll(".prio-tab").forEach(tab =>
+  tab.addEventListener("click", () => { prioritizeColumn = tab.dataset.col; renderPrioritize(); })
+);
+document.querySelectorAll(".activity-tab").forEach(tab =>
+  tab.addEventListener("click", () => { activityRange = tab.dataset.range; renderActivity(); })
+);
 document.getElementById("btn-archive-project").addEventListener("click", archiveProject);
 document.getElementById("btn-generate-claude-md").addEventListener("click", generateClaudeMd);
 document.getElementById("btn-claude-md-close").addEventListener("click", () => hide("modal-claude-md"));
