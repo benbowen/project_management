@@ -43,7 +43,71 @@ header {
 
 header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.01em; }
 
-.header-actions { display: flex; gap: 8px; }
+.header-actions { display: flex; gap: 8px; align-items: center; }
+
+.review-count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--dot-review);
+  color: white;
+}
+
+.modal-hint {
+  margin: -4px 0 12px;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.85rem;
+}
+
+.review-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.review-group {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.review-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--surface2);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.review-group-count {
+  font-size: 0.8rem;
+  color: var(--text-muted, #94a3b8);
+  font-weight: 500;
+}
+
+.review-card {
+  display: flex;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  align-items: flex-start;
+}
+.review-card:last-child { border-bottom: none; }
+
+.review-card-body { flex: 1; min-width: 0; }
+
+.review-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
 
 #project-nav {
   background: var(--surface);
@@ -274,6 +338,16 @@ header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.01em; }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.card-plan {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .card-tags {
   display: flex;
   flex-wrap: wrap;

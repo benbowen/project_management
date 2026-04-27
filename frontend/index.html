@@ -10,6 +10,7 @@
   <header>
     <h1>Project Board</h1>
     <div class="header-actions">
+      <button id="btn-show-review" class="btn-secondary">Review Queue <span id="review-count" class="review-count hidden">0</span></button>
       <button id="btn-show-archive" class="btn-secondary">Archive</button>
       <button id="btn-new-project" class="btn-primary">+ New Project</button>
     </div>
@@ -137,6 +138,20 @@
     </div>
   </div>
 
+  <!-- Modal: Review queue -->
+  <div id="modal-review" class="modal hidden">
+    <div class="modal-box modal-box-wide">
+      <h2>Review Queue</h2>
+      <p class="modal-hint">Cards across all projects waiting for your review. Approve to move to Completed; Send back to return to In Progress.</p>
+      <div id="review-queue-list" class="review-queue-list">
+        <p class="no-archived">Loading...</p>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-review-close" class="btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Archive view -->
   <div id="modal-archive" class="modal hidden">
     <div class="modal-box modal-box-wide">
@@ -168,6 +183,7 @@
       <h2 id="modal-card-title">New Card</h2>
       <label>Title <input type="text" id="card-title" placeholder="What needs doing?"></label>
       <label>Description <textarea id="card-desc" placeholder="Details, acceptance criteria, ideas..."></textarea></label>
+      <label>Plan path <input type="text" id="card-plan-path" placeholder="path/to/PLAN.md (optional)"></label>
       <label>Tags (comma separated) <input type="text" id="card-tags" placeholder="feature, bug, research"></label>
       <label>Column
         <select id="card-col">

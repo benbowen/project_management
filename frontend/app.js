@@ -28,6 +28,7 @@ async function loadProjects() {
     const first = currentProject ? projects.find(p => p.id === currentProject.id) : null;
     await selectProject((first || projects[0]).id);
   }
+  refreshReviewBadge();
 }
 
 function renderTabs() {
@@ -114,6 +115,7 @@ function makeCardEl(card, col) {
     body.innerHTML = `
       <div class="card-title">${escHtml(card.title)}</div>
       ${card.description ? `<div class="card-desc">${escHtml(card.description)}</div>` : ""}
+      ${cardPlanHtml(card)}
       ${card.tags?.length ? `<div class="card-tags">${card.tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join("")}</div>` : ""}
     `;
     div.appendChild(checkbox);
@@ -123,6 +125,7 @@ function makeCardEl(card, col) {
     div.innerHTML = `
       <div class="card-title">${escHtml(card.title)}</div>
       ${card.description ? `<div class="card-desc">${escHtml(card.description)}</div>` : ""}
+      ${cardPlanHtml(card)}
       ${card.tags?.length ? `<div class="card-tags">${card.tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join("")}</div>` : ""}
     `;
     div.addEventListener("click", () => openEditCard(card, col));
@@ -234,6 +237,78 @@ async function restoreProject(projectId) {
   hide("modal-project");
   hide("modal-archive");
   await loadProjects();
+}
+
+async function refreshReviewBadge() {
+  const badge = document.getElementById("review-count");
+  try {
+    const queue = await api("GET", "/review-queue");
+    const total = queue.reduce((n, g) => n + g.cards.length, 0);
+    if (total === 0) {
+      badge.classList.add("hidden");
+    } else {
+      badge.textContent = total;
+      badge.classList.remove("hidden");
+    }
+  } catch {
+    badge.classList.add("hidden");
+  }
+}
+
+async function openReviewQueue() {
+  show("modal-review");
+  const list = document.getElementById("review-queue-list");
+  list.innerHTML = "<p class='no-archived'>Loading...</p>";
+  await renderReviewQueue();
+}
+
+async function renderReviewQueue() {
+  const list = document.getElementById("review-queue-list");
+  const queue = await api("GET", "/review-queue");
+  if (queue.length === 0) {
+    list.innerHTML = "<p class='no-archived'>Nothing waiting for review. 🎉</p>";
+    refreshReviewBadge();
+    return;
+  }
+  list.innerHTML = queue.map(group => `
+    <div class="review-group">
+      <div class="review-group-header">
+        <span class="review-group-name">${escHtml(group.project_name)}</span>
+        <span class="review-group-count">${group.cards.length}</span>
+      </div>
+      ${group.cards.map(c => `
+        <div class="review-card" data-project="${group.project_id}" data-card="${c.id}">
+          <div class="review-card-body">
+            <div class="card-title">${escHtml(c.title)}</div>
+            ${c.description ? `<div class="card-desc">${escHtml(c.description)}</div>` : ""}
+            ${cardPlanHtml(c)}
+            ${c.tags?.length ? `<div class="card-tags">${c.tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join("")}</div>` : ""}
+          </div>
+          <div class="review-card-actions">
+            <button class="btn-secondary btn-review-back" data-project="${group.project_id}" data-card="${c.id}">Send back</button>
+            <button class="btn-primary btn-review-approve" data-project="${group.project_id}" data-card="${c.id}">Approve</button>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `).join("");
+
+  list.querySelectorAll(".btn-review-approve").forEach(btn =>
+    btn.addEventListener("click", () => moveReviewCard(btn.dataset.project, btn.dataset.card, "completed"))
+  );
+  list.querySelectorAll(".btn-review-back").forEach(btn =>
+    btn.addEventListener("click", () => moveReviewCard(btn.dataset.project, btn.dataset.card, "in_progress"))
+  );
+  refreshReviewBadge();
+}
+
+async function moveReviewCard(projectId, cardId, column) {
+  await api("PUT", `/projects/${projectId}/cards/${cardId}`, { column });
+  if (currentProject && currentProject.id === projectId) {
+    currentProject = await api("GET", `/projects/${projectId}`);
+    renderProject();
+  }
+  await renderReviewQueue();
 }
 
 async function openArchiveView() {
@@ -371,6 +446,7 @@ function openAddCard(col) {
   document.getElementById("modal-card-title").textContent = "New Card";
   document.getElementById("card-title").value = "";
   document.getElementById("card-desc").value = "";
+  document.getElementById("card-plan-path").value = "";
   document.getElementById("card-tags").value = "";
   document.getElementById("card-col").value = col;
   show("modal-card");
@@ -383,6 +459,7 @@ function openEditCard(card, col) {
   document.getElementById("modal-card-title").textContent = "Edit Card";
   document.getElementById("card-title").value = card.title;
   document.getElementById("card-desc").value = card.description || "";
+  document.getElementById("card-plan-path").value = card.plan_path || "";
   document.getElementById("card-tags").value = (card.tags || []).join(", ");
   document.getElementById("card-col").value = col;
   show("modal-card");
@@ -395,6 +472,7 @@ async function saveCard() {
   const data = {
     title,
     description: document.getElementById("card-desc").value.trim(),
+    plan_path: document.getElementById("card-plan-path").value.trim(),
     tags: document.getElementById("card-tags").value.split(",").map(t => t.trim()).filter(Boolean),
     column: document.getElementById("card-col").value,
   };
@@ -406,6 +484,7 @@ async function saveCard() {
   hide("modal-card");
   currentProject = await api("GET", `/projects/${currentProject.id}`);
   renderProject();
+  refreshReviewBadge();
 }
 
 async function deleteCard() {
@@ -452,6 +531,11 @@ function escHtml(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
+function cardPlanHtml(card) {
+  if (!card.plan_path) return "";
+  return `<div class="card-plan" title="${escHtml(card.plan_path)}">📄 ${escHtml(card.plan_path)}</div>`;
+}
+
 function flashSaved(btnId) {
   const btn = document.getElementById(btnId);
   const orig = btn.textContent;
@@ -464,6 +548,8 @@ function flashSaved(btnId) {
 document.getElementById("btn-new-project").addEventListener("click", openNewProject);
 document.getElementById("btn-show-archive").addEventListener("click", openArchiveView);
 document.getElementById("btn-archive-view-close").addEventListener("click", () => hide("modal-archive"));
+document.getElementById("btn-show-review").addEventListener("click", openReviewQueue);
+document.getElementById("btn-review-close").addEventListener("click", () => hide("modal-review"));
 document.getElementById("btn-archive-project").addEventListener("click", archiveProject);
 document.getElementById("btn-generate-claude-md").addEventListener("click", generateClaudeMd);
 document.getElementById("btn-claude-md-close").addEventListener("click", () => hide("modal-claude-md"));

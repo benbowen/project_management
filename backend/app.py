@@ -83,6 +83,23 @@ def list_projects():
     return jsonify(load_json(PROJECTS_INDEX))
 
 
+@app.route("/api/review-queue", methods=["GET"])
+def review_queue():
+    result = []
+    for entry in load_json(PROJECTS_INDEX):
+        project = load_project(entry["id"])
+        if not project:
+            continue
+        cards = project["columns"].get("ready_for_review", [])
+        if cards:
+            result.append({
+                "project_id": project["id"],
+                "project_name": project["name"],
+                "cards": cards,
+            })
+    return jsonify(result)
+
+
 @app.route("/api/projects", methods=["POST"])
 def create_project():
     data = request.json
@@ -203,6 +220,7 @@ def add_card(project_id):
         "id": str(uuid.uuid4())[:8],
         "title": data["title"],
         "description": data.get("description", ""),
+        "plan_path": data.get("plan_path", ""),
         "created": datetime.now().isoformat()[:10],
         "tags": data.get("tags", []),
     }
@@ -220,7 +238,7 @@ def update_card(project_id, card_id):
     for col, cards in project["columns"].items():
         for card in cards:
             if card["id"] == card_id:
-                for field in ["title", "description", "tags"]:
+                for field in ["title", "description", "tags", "plan_path"]:
                     if field in data:
                         card[field] = data[field]
                 # move to different column if requested

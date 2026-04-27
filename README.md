@@ -58,6 +58,8 @@ Each project has these columns:
 
 The intended flow is **In Progress → Ready for Review → Completed** (or back to In Progress if review surfaces issues).
 
+The **Review Queue** button in the header opens a cross-project view of every card sitting in Ready for Review. Approve sends a card to Completed; Send back returns it to In Progress. The badge on the button shows the total count.
+
 ## Adding projects
 
 Click **+ New Project** in the UI. Agents should add/edit projects and cards through the HTTP API — see `SKILLS.md` for the full reference.
