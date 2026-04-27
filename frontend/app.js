@@ -261,6 +261,24 @@ function openEditProject() {
   show("modal-project");
 }
 
+async function generateClaudeMd() {
+  const btn = document.getElementById("btn-generate-claude-md");
+  const orig = btn.textContent;
+  btn.textContent = "Writing...";
+  btn.disabled = true;
+  try {
+    const result = await api("POST", `/projects/${currentProject.id}/generate-claude-md`);
+    btn.textContent = `Written ✓`;
+    btn.title = result.written_to;
+    setTimeout(() => { btn.textContent = orig; btn.title = ""; btn.disabled = false; }, 2500);
+  } catch (e) {
+    const msg = e.message.includes("{") ? JSON.parse(e.message).error : e.message;
+    alert(`Could not write CLAUDE.md:\n${msg}`);
+    btn.textContent = orig;
+    btn.disabled = false;
+  }
+}
+
 async function archiveProject() {
   if (!currentProject) return;
   if (!confirm(`Archive project "${currentProject.name}"? It can be restored later from the New Project dialog.`)) return;
@@ -387,6 +405,7 @@ function flashSaved(btnId) {
 
 document.getElementById("btn-new-project").addEventListener("click", openNewProject);
 document.getElementById("btn-archive-project").addEventListener("click", archiveProject);
+document.getElementById("btn-generate-claude-md").addEventListener("click", generateClaudeMd);
 document.getElementById("btn-delete-selected").addEventListener("click", deleteSelectedCards);
 document.getElementById("btn-archive-selected").addEventListener("click", archiveSelectedCards);
 document.getElementById("btn-restore-cancel").addEventListener("click", () => hide("modal-project"));
