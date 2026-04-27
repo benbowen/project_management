@@ -451,6 +451,8 @@ header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.01em; }
   border-color: var(--accent);
 }
 .modal-box textarea { min-height: 100px; resize: vertical; }
+.modal-box-wide { width: 700px; }
+.modal-box-wide textarea { min-height: 420px; font-family: "SF Mono", "Fira Mono", monospace; font-size: 0.8rem; line-height: 1.5; resize: vertical; }
 .modal-box select { cursor: pointer; }
 
 .modal-actions {

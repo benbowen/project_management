@@ -261,22 +261,56 @@ function openEditProject() {
   show("modal-project");
 }
 
-async function generateClaudeMd() {
-  const btn = document.getElementById("btn-generate-claude-md");
-  const orig = btn.textContent;
-  btn.textContent = "Writing...";
-  btn.disabled = true;
-  try {
-    const result = await api("POST", `/projects/${currentProject.id}/generate-claude-md`);
-    btn.textContent = `Written ✓`;
-    btn.title = result.written_to;
-    setTimeout(() => { btn.textContent = orig; btn.title = ""; btn.disabled = false; }, 2500);
-  } catch (e) {
-    const msg = e.message.includes("{") ? JSON.parse(e.message).error : e.message;
-    alert(`Could not write CLAUDE.md:\n${msg}`);
-    btn.textContent = orig;
-    btn.disabled = false;
+function generateClaudeMd() {
+  const p = currentProject;
+  const today = new Date().toISOString().slice(0, 10);
+
+  function fmtCards(cards) {
+    if (!cards || cards.length === 0) return "_None_\n";
+    return cards.map(c => {
+      let s = `### ${c.title}\n`;
+      if (c.description) s += `${c.description}\n`;
+      if (c.tags && c.tags.length) s += `_Tags: ${c.tags.join(", ")}_\n`;
+      return s;
+    }).join("\n");
   }
+
+  const logLines = (p.session_log || []).slice(0, 3)
+    .map(e => `- **${e.date}**: ${e.summary}`)
+    .join("\n") || "_No entries yet._";
+
+  const md = `# ${p.name} — Claude Context
+
+> Generated ${today} from Project Board. Paste at the start of a Claude session.
+
+## Project
+
+**Description:** ${p.description || ""}
+**Repo:** ${p.repo || ""}
+
+## Currently In Progress
+
+${fmtCards(p.columns.in_progress)}
+## Up Next
+
+${fmtCards((p.columns.next || []).slice(0, 5))}
+## Notes
+
+${p.notes || "_No notes._"}
+
+## Recent Session Log
+
+${logLines}
+`;
+
+  document.getElementById("claude-md-project-name").textContent = p.name;
+  document.getElementById("claude-md-text").value = md;
+  show("modal-claude-md");
+  navigator.clipboard.writeText(md).then(() => {
+    const btn = document.getElementById("btn-claude-md-copy");
+    btn.textContent = "Copied!";
+    setTimeout(() => btn.textContent = "Copy to Clipboard", 2000);
+  });
 }
 
 async function archiveProject() {
@@ -406,6 +440,15 @@ function flashSaved(btnId) {
 document.getElementById("btn-new-project").addEventListener("click", openNewProject);
 document.getElementById("btn-archive-project").addEventListener("click", archiveProject);
 document.getElementById("btn-generate-claude-md").addEventListener("click", generateClaudeMd);
+document.getElementById("btn-claude-md-close").addEventListener("click", () => hide("modal-claude-md"));
+document.getElementById("btn-claude-md-copy").addEventListener("click", () => {
+  const text = document.getElementById("claude-md-text").value;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById("btn-claude-md-copy");
+    btn.textContent = "Copied!";
+    setTimeout(() => btn.textContent = "Copy to Clipboard", 2000);
+  });
+});
 document.getElementById("btn-delete-selected").addEventListener("click", deleteSelectedCards);
 document.getElementById("btn-archive-selected").addEventListener("click", archiveSelectedCards);
 document.getElementById("btn-restore-cancel").addEventListener("click", () => hide("modal-project"));
