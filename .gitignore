@@ -4,3 +4,7 @@ __pycache__/
 
 # Project data lives locally only
 data/
+
+# Server runtime files
+server.pid
+server.log

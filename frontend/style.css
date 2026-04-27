@@ -9,6 +9,7 @@
   --accent-hover: #818cf8;
   --danger: #ef4444;
   --dot-active: #22c55e;
+  --dot-review: #ec4899;
   --dot-next: #f59e0b;
   --dot-later: #6366f1;
   --dot-longterm: #8b5cf6;
@@ -41,6 +42,8 @@ header {
 }
 
 header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.01em; }
+
+.header-actions { display: flex; gap: 8px; }
 
 #project-nav {
   background: var(--surface);
@@ -228,6 +231,7 @@ header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.01em; }
   flex-shrink: 0;
 }
 .dot-active { background: var(--dot-active); }
+.dot-review { background: var(--dot-review); }
 .dot-next { background: var(--dot-next); }
 .dot-later { background: var(--dot-later); }
 .dot-longterm { background: var(--dot-longterm); }

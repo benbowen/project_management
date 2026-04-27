@@ -20,6 +20,7 @@ All requests/responses are JSON. The server must be running (`./start.sh`).
   "last_updated": "YYYY-MM-DD",
   "columns": {
     "in_progress": [],
+    "ready_for_review": [],
     "next": [],
     "later": [],
     "long_term": [],
@@ -69,7 +70,9 @@ curl -s -X POST http://localhost:5001/api/projects/<id>/cards \
   -d '{"column":"in_progress","title":"Wire up auth","description":"...","tags":["backend"]}'
 ```
 
-Default column is `next` if omitted. Valid columns: `in_progress`, `next`, `later`, `long_term`, `recent`, `completed`.
+Default column is `next` if omitted. Valid columns: `in_progress`, `ready_for_review`, `next`, `later`, `long_term`, `recent`, `completed`.
+
+When you finish a card but it needs the user to verify or accept the work, move it to `ready_for_review` rather than `completed`. Reserve `completed` for things the user has actually signed off on.
 
 ### Move a card between columns
 

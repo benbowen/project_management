@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import uuid
 from datetime import datetime
 from flask import Flask, jsonify, request, send_from_directory
@@ -14,7 +15,7 @@ PROJECTS_DIR = os.path.join(DATA_DIR, "projects")
 ARCHIVED_INDEX = os.path.join(DATA_DIR, "archived_projects.json")
 ARCHIVED_DIR = os.path.join(DATA_DIR, "archived")
 
-COLUMNS = ["in_progress", "next", "later", "long_term", "recent", "completed"]
+COLUMNS = ["in_progress", "ready_for_review", "next", "later", "long_term", "recent", "completed"]
 
 
 def load_json(path):
@@ -25,6 +26,11 @@ def load_json(path):
 def save_json(path, data):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
+
+
+def slugify(name):
+    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    return slug or "project"
 
 
 def _init_storage():
@@ -43,7 +49,11 @@ def load_project(project_id):
     path = os.path.join(PROJECTS_DIR, f"{project_id}.json")
     if not os.path.exists(path):
         return None
-    return load_json(path)
+    project = load_json(path)
+    project.setdefault("columns", {})
+    for col in COLUMNS:
+        project["columns"].setdefault(col, [])
+    return project
 
 
 def save_project(project):
@@ -76,7 +86,7 @@ def list_projects():
 @app.route("/api/projects", methods=["POST"])
 def create_project():
     data = request.json
-    project_id = data["name"].lower().replace(" ", "_")
+    project_id = slugify(data["name"])
     project = {
         "id": project_id,
         "name": data["name"],

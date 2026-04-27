@@ -9,7 +9,10 @@
 <body>
   <header>
     <h1>Project Board</h1>
-    <button id="btn-new-project" class="btn-primary">+ New Project</button>
+    <div class="header-actions">
+      <button id="btn-show-archive" class="btn-secondary">Archive</button>
+      <button id="btn-new-project" class="btn-primary">+ New Project</button>
+    </div>
   </header>
 
   <nav id="project-nav">
@@ -42,6 +45,11 @@
           <div class="col-header"><span class="col-dot dot-active"></span>In Progress</div>
           <div class="cards" id="col-in_progress"></div>
           <button class="btn-add-card" data-col="in_progress">+ Add card</button>
+        </div>
+        <div class="column" data-col="ready_for_review">
+          <div class="col-header"><span class="col-dot dot-review"></span>Ready for Review</div>
+          <div class="cards" id="col-ready_for_review"></div>
+          <button class="btn-add-card" data-col="ready_for_review">+ Add card</button>
         </div>
         <div class="column" data-col="next">
           <div class="col-header"><span class="col-dot dot-next"></span>Next</div>
@@ -129,6 +137,19 @@
     </div>
   </div>
 
+  <!-- Modal: Archive view -->
+  <div id="modal-archive" class="modal hidden">
+    <div class="modal-box modal-box-wide">
+      <h2>Archived Projects</h2>
+      <div id="archive-view-list" class="archived-projects-list">
+        <p class="no-archived">Loading...</p>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-archive-view-close" class="btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Claude Context -->
   <div id="modal-claude-md" class="modal hidden">
     <div class="modal-box modal-box-wide">
@@ -151,6 +172,7 @@
       <label>Column
         <select id="card-col">
           <option value="in_progress">In Progress</option>
+          <option value="ready_for_review">Ready for Review</option>
           <option value="next">Next</option>
           <option value="later">Later</option>
           <option value="long_term">Long Term</option>

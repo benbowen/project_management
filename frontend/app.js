@@ -59,7 +59,7 @@ function renderProject() {
   selectedCards.clear();
   updateDeleteSelectedBtn();
 
-  const cols = ["in_progress", "next", "later", "long_term", "recent", "completed"];
+  const cols = ["in_progress", "ready_for_review", "next", "later", "long_term", "recent", "completed"];
   cols.forEach(col => {
     const el = document.getElementById(`col-${col}`);
     el.innerHTML = "";
@@ -232,7 +232,31 @@ async function restoreProject(projectId) {
   const project = await api("POST", `/archived-projects/${projectId}/restore`);
   currentProject = project;
   hide("modal-project");
+  hide("modal-archive");
   await loadProjects();
+}
+
+async function openArchiveView() {
+  show("modal-archive");
+  const list = document.getElementById("archive-view-list");
+  list.innerHTML = "<p class='no-archived'>Loading...</p>";
+  const archived = await api("GET", "/archived-projects");
+  if (archived.length === 0) {
+    list.innerHTML = "<p class='no-archived'>No archived projects.</p>";
+    return;
+  }
+  list.innerHTML = archived.map(p => `
+    <div class="archived-project-row">
+      <div class="archived-project-info">
+        <div class="archived-project-name">${escHtml(p.name)}</div>
+        <div class="archived-project-date">Archived ${p.archived_date}</div>
+      </div>
+      <button class="btn-primary btn-restore-archive" data-id="${p.id}">Restore</button>
+    </div>
+  `).join("");
+  list.querySelectorAll(".btn-restore-archive").forEach(btn =>
+    btn.addEventListener("click", () => restoreProject(btn.dataset.id))
+  );
 }
 
 function openNewProject() {
@@ -438,6 +462,8 @@ function flashSaved(btnId) {
 // --- Wire up events ---
 
 document.getElementById("btn-new-project").addEventListener("click", openNewProject);
+document.getElementById("btn-show-archive").addEventListener("click", openArchiveView);
+document.getElementById("btn-archive-view-close").addEventListener("click", () => hide("modal-archive"));
 document.getElementById("btn-archive-project").addEventListener("click", archiveProject);
 document.getElementById("btn-generate-claude-md").addEventListener("click", generateClaudeMd);
 document.getElementById("btn-claude-md-close").addEventListener("click", () => hide("modal-claude-md"));
