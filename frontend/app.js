@@ -124,7 +124,7 @@ function makeCardEl(card, col) {
       e.stopPropagation();
       toggleCardSelection(card.id, div, checkbox);
     });
-    div.addEventListener("click", () => toggleCardSelection(card.id, div, checkbox));
+    div.addEventListener("click", () => openEditCard(card, col));
 
     const body = document.createElement("div");
     body.className = "card-body";
