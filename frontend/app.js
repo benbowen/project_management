@@ -639,7 +639,12 @@ async function openInProgress() {
   const list = document.getElementById("in-progress-list");
   list.innerHTML = "<p class='no-archived'>Loading...</p>";
   const groups = await api("GET", "/in-progress");
-  if (groups.length === 0) {
+
+  const tasks = groups.flatMap(g =>
+    g.cards.map(c => ({ card: c, project_id: g.project_id, project_name: g.project_name }))
+  );
+
+  if (tasks.length === 0) {
     list.innerHTML = "<p class='no-archived'>Nothing in progress right now.</p>";
     return;
   }
@@ -652,32 +657,43 @@ async function openInProgress() {
     return 2;
   };
 
-  list.innerHTML = groups.map(group => {
-    const sorted = [...group.cards].sort((a, b) => {
-      const r = dueRank(a) - dueRank(b);
-      if (r !== 0) return r;
-      return (a.due_date || "9999-99-99").localeCompare(b.due_date || "9999-99-99");
-    });
-    return `
-      <div class="review-group">
-        <div class="review-group-header">
-          <span class="review-group-name">${escHtml(group.project_name)}</span>
-          <span class="review-group-count">${sorted.length}</span>
-        </div>
-        ${sorted.map(c => `
-          <div class="review-card">
-            <div class="review-card-body">
-              <div class="card-title">${escHtml(c.title)}</div>
-              ${c.description ? `<div class="card-desc">${escHtml(c.description)}</div>` : ""}
-              ${cardPlanHtml(c)}
-              ${cardDueHtml(c)}
-              ${c.tags?.length ? `<div class="card-tags">${c.tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join("")}</div>` : ""}
+  tasks.sort((a, b) => {
+    const r = dueRank(a.card) - dueRank(b.card);
+    if (r !== 0) return r;
+    const da = a.card.due_date || "9999-99-99";
+    const db = b.card.due_date || "9999-99-99";
+    if (da !== db) return da.localeCompare(db);
+    return a.project_name.localeCompare(b.project_name);
+  });
+
+  list.innerHTML = `
+    <div class="in-progress-count">${tasks.length} task${tasks.length === 1 ? "" : "s"} in progress</div>
+    <div class="in-progress-tasks">
+      ${tasks.map(t => {
+        const c = t.card;
+        return `
+          <div class="in-progress-task" data-project="${t.project_id}" title="Open ${escHtml(t.project_name)}">
+            <div class="card-title">
+              <span class="in-progress-project-prefix">${escHtml(t.project_name)}</span>
+              <span class="in-progress-title-sep">·</span>
+              ${escHtml(c.title)}
             </div>
+            ${c.description ? `<div class="card-desc">${escHtml(c.description)}</div>` : ""}
+            ${cardPlanHtml(c)}
+            ${cardDueHtml(c)}
+            ${c.tags?.length ? `<div class="card-tags">${c.tags.map(tag => `<span class="tag">${escHtml(tag)}</span>`).join("")}</div>` : ""}
           </div>
-        `).join("")}
-      </div>
-    `;
-  }).join("");
+        `;
+      }).join("")}
+    </div>
+  `;
+
+  list.querySelectorAll(".in-progress-task").forEach(el =>
+    el.addEventListener("click", () => {
+      hide("modal-in-progress");
+      selectProject(el.dataset.project);
+    })
+  );
 }
 
 async function moveReviewCard(projectId, cardId, column) {

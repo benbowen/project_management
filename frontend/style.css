@@ -239,6 +239,40 @@ header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.01em; }
 .prio-controls button:hover:not(:disabled) { border-color: var(--accent); }
 .prio-controls button:disabled { opacity: 0.3; cursor: not-allowed; }
 
+.in-progress-count {
+  font-size: 0.85rem;
+  color: var(--text-muted, #94a3b8);
+  margin-bottom: 10px;
+}
+
+.in-progress-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.in-progress-task {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.1s, background 0.1s;
+}
+.in-progress-task:hover {
+  border-color: var(--accent);
+  background: var(--surface2);
+}
+
+.in-progress-project-prefix {
+  color: var(--text-muted, #94a3b8);
+  font-weight: 500;
+}
+
+.in-progress-title-sep {
+  color: var(--text-muted, #94a3b8);
+  margin: 0 4px;
+}
+
 #project-nav {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
