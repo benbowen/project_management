@@ -24,8 +24,10 @@ PROJECTS_INDEX = os.path.join(DATA_DIR, "projects.json")
 PROJECTS_DIR = os.path.join(DATA_DIR, "projects")
 ARCHIVED_INDEX = os.path.join(DATA_DIR, "archived_projects.json")
 ARCHIVED_DIR = os.path.join(DATA_DIR, "archived")
+PRIORITY_FILE = os.path.join(DATA_DIR, "priority.json")
 
 COLUMNS = ["in_progress", "ready_for_review", "next", "later", "long_term", "recent", "completed"]
+PRIORITY_COLUMNS = ["next", "later", "long_term"]
 
 
 def load_json(path):
@@ -50,6 +52,15 @@ def _init_storage():
         save_json(PROJECTS_INDEX, [])
     if not os.path.exists(ARCHIVED_INDEX):
         save_json(ARCHIVED_INDEX, [])
+    if not os.path.exists(PRIORITY_FILE):
+        save_json(PRIORITY_FILE, {col: [] for col in PRIORITY_COLUMNS})
+
+
+def load_priority():
+    data = load_json(PRIORITY_FILE)
+    for col in PRIORITY_COLUMNS:
+        data.setdefault(col, [])
+    return data
 
 
 _init_storage()
@@ -97,10 +108,8 @@ def list_projects():
 def activity():
     since = request.args.get("since")  # YYYY-MM-DD, optional
     result = []
-    for entry in load_json(PROJECTS_INDEX):
-        project = load_project(entry["id"])
-        if not project:
-            continue
+
+    def collect(project):
         sources = list(project["columns"].get("completed", []))
         sources.extend(project.get("archived", []))
         for c in sources:
@@ -117,6 +126,17 @@ def activity():
                 "title": c["title"],
                 "tags": c.get("tags", []),
             })
+
+    for entry in load_json(PROJECTS_INDEX):
+        project = load_project(entry["id"])
+        if project:
+            collect(project)
+
+    for entry in load_json(ARCHIVED_INDEX):
+        path = os.path.join(ARCHIVED_DIR, f"{entry['id']}.json")
+        if os.path.exists(path):
+            collect(load_json(path))
+
     result.sort(key=lambda r: r["completed_at"], reverse=True)
     return jsonify(result)
 
@@ -152,6 +172,60 @@ def column_overview(column):
     if column not in COLUMNS:
         return jsonify({"error": "invalid column"}), 400
     return jsonify(_column_overview(column))
+
+
+@app.route("/api/prioritize/<column>", methods=["GET"])
+def get_prioritize(column):
+    if column not in PRIORITY_COLUMNS:
+        return jsonify({"error": "invalid column"}), 400
+
+    items = {}
+    for entry in load_json(PROJECTS_INDEX):
+        project = load_project(entry["id"])
+        if not project:
+            continue
+        for card in project["columns"].get(column, []):
+            items[(project["id"], card["id"])] = {
+                "project_id": project["id"],
+                "project_name": project["name"],
+                "card": card,
+            }
+
+    priority = load_priority()[column]
+    seen = set()
+    ordered = []
+    for entry in priority:
+        key = (entry.get("project_id"), entry.get("card_id"))
+        if key in items and key not in seen:
+            ordered.append(items[key])
+            seen.add(key)
+    for key, item in items.items():
+        if key not in seen:
+            ordered.append(item)
+
+    return jsonify(ordered)
+
+
+@app.route("/api/prioritize/<column>", methods=["PUT"])
+def set_prioritize(column):
+    if column not in PRIORITY_COLUMNS:
+        return jsonify({"error": "invalid column"}), 400
+    body = request.get_json() or {}
+    order = body.get("order", [])
+    cleaned = []
+    for entry in order:
+        if not isinstance(entry, dict):
+            return jsonify({"error": "bad entry"}), 400
+        pid = entry.get("project_id")
+        cid = entry.get("card_id")
+        if not pid or not cid:
+            return jsonify({"error": "missing project_id or card_id"}), 400
+        cleaned.append({"project_id": pid, "card_id": cid})
+
+    priority = load_priority()
+    priority[column] = cleaned
+    save_json(PRIORITY_FILE, priority)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/projects", methods=["POST"])
@@ -378,4 +452,4 @@ def add_session_log(project_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5001)
+    app.run(debug=False, host="0.0.0.0", port=5001)

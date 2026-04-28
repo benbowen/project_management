@@ -19,14 +19,24 @@ async function api(method, path, body) {
 // --- Load & render ---
 
 async function loadProjects() {
-  projects = await api("GET", "/projects");
+  const hashId = window.location.hash.slice(1);
+  const projectsP = api("GET", "/projects");
+  const hashProjectP = hashId ? api("GET", `/projects/${hashId}`).catch(() => null) : null;
+
+  projects = await projectsP;
   renderTabs();
   if (projects.length === 0) {
     show("empty-state");
     hide("project-view");
   } else {
-    const first = currentProject ? projects.find(p => p.id === currentProject.id) : null;
-    await selectProject((first || projects[0]).id);
+    const hashProject = hashProjectP ? await hashProjectP : null;
+    const hashValid = hashProject && projects.find(p => p.id === hashId);
+    const fromCurrent = currentProject ? projects.find(p => p.id === currentProject.id) : null;
+    if (hashValid) {
+      await selectProject(hashId, hashProject);
+    } else {
+      await selectProject((fromCurrent || projects[0]).id);
+    }
   }
   refreshReviewBadge();
 }
@@ -41,13 +51,23 @@ function renderTabs() {
   );
 }
 
-async function selectProject(id) {
-  currentProject = await api("GET", `/projects/${id}`);
+async function selectProject(id, prefetched) {
+  currentProject = prefetched || await api("GET", `/projects/${id}`);
+  if (window.location.hash.slice(1) !== id) {
+    history.replaceState(null, "", `#${id}`);
+  }
   hide("empty-state");
   show("project-view");
   renderTabs();
   renderProject();
 }
+
+window.addEventListener("hashchange", () => {
+  const id = window.location.hash.slice(1);
+  if (id && id !== currentProject?.id && projects.find(p => p.id === id)) {
+    selectProject(id);
+  }
+});
 
 function renderProject() {
   const p = currentProject;
@@ -340,14 +360,18 @@ async function restoreProject(projectId) {
 
 let activityRange = "today";
 
+function localDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function activitySinceDate(range) {
   const now = new Date();
-  if (range === "today") return now.toISOString().slice(0, 10);
+  if (range === "today") return localDateStr(now);
   if (range === "week") {
     const d = new Date(now);
     const dow = (d.getDay() + 6) % 7; // Monday=0
     d.setDate(d.getDate() - dow);
-    return d.toISOString().slice(0, 10);
+    return localDateStr(d);
   }
   return null;
 }
@@ -500,6 +524,8 @@ async function openPrioritize() {
   await renderPrioritize();
 }
 
+let prioItems = [];
+
 async function renderPrioritize() {
   const list = document.getElementById("prioritize-list");
   list.innerHTML = "<p class='no-archived'>Loading...</p>";
@@ -508,60 +534,104 @@ async function renderPrioritize() {
     t.classList.toggle("active", t.dataset.col === prioritizeColumn)
   );
 
-  const groups = await api("GET", `/column-overview/${prioritizeColumn}`);
-  if (groups.length === 0) {
+  prioItems = await api("GET", `/prioritize/${prioritizeColumn}`);
+  if (prioItems.length === 0) {
     list.innerHTML = "<p class='no-archived'>Nothing in this column across any project.</p>";
     return;
   }
 
-  list.innerHTML = groups.map(group => `
-    <div class="review-group" data-project="${group.project_id}">
-      <div class="review-group-header">
-        <span class="review-group-name">${escHtml(group.project_name)}</span>
-        <span class="review-group-count">${group.cards.length}</span>
-      </div>
-      ${group.cards.map((c, i) => `
-        <div class="prio-card" data-project="${group.project_id}" data-card="${c.id}" data-index="${i}">
-          <div class="prio-rank">${i + 1}</div>
-          <div class="review-card-body">
-            <div class="card-title">${escHtml(c.title)}</div>
-            ${c.description ? `<div class="card-desc">${escHtml(c.description)}</div>` : ""}
-            ${cardPlanHtml(c)}
-            ${cardDueHtml(c)}
-            ${c.tags?.length ? `<div class="card-tags">${c.tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join("")}</div>` : ""}
-          </div>
-          <div class="prio-controls">
-            <button class="btn-prio-up" ${i === 0 ? "disabled" : ""} data-project="${group.project_id}" data-card="${c.id}">▲</button>
-            <button class="btn-prio-down" ${i === group.cards.length - 1 ? "disabled" : ""} data-project="${group.project_id}" data-card="${c.id}">▼</button>
-          </div>
+  list.innerHTML = prioItems.map((item, i) => {
+    const c = item.card;
+    return `
+      <div class="prio-card" data-index="${i}">
+        <div class="prio-rank">${i + 1}</div>
+        <div class="review-card-body">
+          <div class="card-title">${escHtml(c.title)}</div>
+          <div class="prio-project-label">${escHtml(item.project_name)}</div>
+          ${c.description ? `<div class="card-desc">${escHtml(c.description)}</div>` : ""}
+          ${cardPlanHtml(c)}
+          ${cardDueHtml(c)}
+          ${c.tags?.length ? `<div class="card-tags">${c.tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join("")}</div>` : ""}
         </div>
-      `).join("")}
-    </div>
-  `).join("");
+        <div class="prio-controls">
+          <button class="btn-prio-up" data-index="${i}" ${i === 0 ? "disabled" : ""}>▲</button>
+          <button class="btn-prio-down" data-index="${i}" ${i === prioItems.length - 1 ? "disabled" : ""}>▼</button>
+        </div>
+      </div>
+    `;
+  }).join("");
 
   list.querySelectorAll(".btn-prio-up").forEach(btn =>
-    btn.addEventListener("click", () => moveCardInPriority(btn.dataset.project, btn.dataset.card, -1))
+    btn.addEventListener("click", () => movePrio(+btn.dataset.index, -1))
   );
   list.querySelectorAll(".btn-prio-down").forEach(btn =>
-    btn.addEventListener("click", () => moveCardInPriority(btn.dataset.project, btn.dataset.card, +1))
+    btn.addEventListener("click", () => movePrio(+btn.dataset.index, +1))
+  );
+  list.querySelectorAll(".prio-card").forEach(div =>
+    makePrioCardDraggable(div, +div.dataset.index)
   );
 }
 
-async function moveCardInPriority(projectId, cardId, delta) {
-  const project = await api("GET", `/projects/${projectId}`);
-  const cards = project.columns[prioritizeColumn] || [];
-  const i = cards.findIndex(c => c.id === cardId);
-  const j = i + delta;
-  if (i < 0 || j < 0 || j >= cards.length) return;
-  [cards[i], cards[j]] = [cards[j], cards[i]];
-  await api("PUT", `/projects/${projectId}/columns/${prioritizeColumn}/reorder`, {
-    card_ids: cards.map(c => c.id),
+async function persistPrioOrder(items) {
+  await api("PUT", `/prioritize/${prioritizeColumn}`, {
+    order: items.map(it => ({ project_id: it.project_id, card_id: it.card.id })),
   });
-  if (currentProject && currentProject.id === projectId) {
-    currentProject = await api("GET", `/projects/${projectId}`);
-    renderProject();
-  }
   await renderPrioritize();
+}
+
+async function movePrio(i, delta) {
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= prioItems.length) return;
+  const reordered = prioItems.slice();
+  [reordered[i], reordered[j]] = [reordered[j], reordered[i]];
+  await persistPrioOrder(reordered);
+}
+
+let prioDragData = null;
+
+function makePrioCardDraggable(div, index) {
+  div.draggable = true;
+  div.addEventListener("dragstart", e => {
+    prioDragData = { index };
+    div.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", String(index)); } catch {}
+  });
+  div.addEventListener("dragend", () => {
+    div.classList.remove("dragging");
+    prioDragData = null;
+    document.querySelectorAll(".prio-card.drop-above, .prio-card.drop-below")
+      .forEach(el => el.classList.remove("drop-above", "drop-below"));
+  });
+  div.addEventListener("dragover", e => {
+    if (!prioDragData || prioDragData.index === index) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = div.getBoundingClientRect();
+    const above = e.clientY < rect.top + rect.height / 2;
+    div.classList.toggle("drop-above", above);
+    div.classList.toggle("drop-below", !above);
+  });
+  div.addEventListener("dragleave", () => {
+    div.classList.remove("drop-above", "drop-below");
+  });
+  div.addEventListener("drop", async e => {
+    if (!prioDragData) return;
+    e.preventDefault();
+    const fromIdx = prioDragData.index;
+    div.classList.remove("drop-above", "drop-below");
+    if (fromIdx === index) return;
+    const rect = div.getBoundingClientRect();
+    const dropAbove = e.clientY < rect.top + rect.height / 2;
+
+    const reordered = prioItems.slice();
+    const [moved] = reordered.splice(fromIdx, 1);
+    let target = index;
+    if (fromIdx < index) target--;
+    if (!dropAbove) target++;
+    reordered.splice(target, 0, moved);
+    await persistPrioOrder(reordered);
+  });
 }
 
 async function openInProgress() {
