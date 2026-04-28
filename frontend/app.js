@@ -111,6 +111,84 @@ function renderArchived(archived) {
   `).join("");
 }
 
+let dragData = null;
+
+function makeCardDraggable(div, card, col) {
+  div.draggable = true;
+  div.addEventListener("dragstart", e => {
+    dragData = { cardId: card.id, sourceCol: col };
+    div.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", card.id); } catch {}
+  });
+  div.addEventListener("dragend", () => {
+    div.classList.remove("dragging");
+    dragData = null;
+    document.querySelectorAll(".drop-target").forEach(el => el.classList.remove("drop-target"));
+  });
+}
+
+function setupColumnDropTargets() {
+  document.querySelectorAll(".cards").forEach(container => {
+    const col = container.id.replace("col-", "");
+    container.addEventListener("dragover", e => {
+      if (!dragData) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      container.closest(".column").classList.add("drop-target");
+    });
+    container.addEventListener("dragleave", e => {
+      if (!container.contains(e.relatedTarget)) {
+        container.closest(".column").classList.remove("drop-target");
+      }
+    });
+    container.addEventListener("drop", e => {
+      e.preventDefault();
+      if (!dragData) return;
+      const { cardId, sourceCol } = dragData;
+      handleCardDrop(cardId, sourceCol, col, e.clientY, container);
+    });
+  });
+}
+
+async function handleCardDrop(cardId, sourceCol, targetCol, clientY, container) {
+  const visible = [...container.querySelectorAll(".card")].filter(el => !el.classList.contains("dragging"));
+  let dropIndex = visible.length;
+  for (let i = 0; i < visible.length; i++) {
+    const rect = visible[i].getBoundingClientRect();
+    if (clientY < rect.top + rect.height / 2) { dropIndex = i; break; }
+  }
+
+  if (sourceCol === targetCol) {
+    const cards = [...currentProject.columns[sourceCol]];
+    const fromIdx = cards.findIndex(c => c.id === cardId);
+    if (fromIdx < 0) return;
+    const [moved] = cards.splice(fromIdx, 1);
+    let insertAt = dropIndex;
+    if (fromIdx < dropIndex) insertAt--;
+    cards.splice(insertAt, 0, moved);
+    if (cards.map(c => c.id).join("|") === currentProject.columns[sourceCol].map(c => c.id).join("|")) return;
+    await api("PUT", `/projects/${currentProject.id}/columns/${sourceCol}/reorder`, {
+      card_ids: cards.map(c => c.id),
+    });
+  } else {
+    await api("PUT", `/projects/${currentProject.id}/cards/${cardId}`, { column: targetCol });
+    const fresh = await api("GET", `/projects/${currentProject.id}`);
+    const targetCards = [...fresh.columns[targetCol]];
+    const movedIdx = targetCards.findIndex(c => c.id === cardId);
+    if (movedIdx >= 0 && dropIndex < targetCards.length - 1) {
+      const [moved] = targetCards.splice(movedIdx, 1);
+      targetCards.splice(dropIndex, 0, moved);
+      await api("PUT", `/projects/${currentProject.id}/columns/${targetCol}/reorder`, {
+        card_ids: targetCards.map(c => c.id),
+      });
+    }
+  }
+  currentProject = await api("GET", `/projects/${currentProject.id}`);
+  renderProject();
+  refreshReviewBadge();
+}
+
 function makeCardEl(card, col) {
   const div = document.createElement("div");
 
@@ -149,6 +227,7 @@ function makeCardEl(card, col) {
     div.addEventListener("click", () => openEditCard(card, col));
   }
 
+  makeCardDraggable(div, card, col);
   return div;
 }
 
@@ -870,4 +949,5 @@ deleteCardBtn.addEventListener("click", deleteCard);
 cardModal.querySelector(".modal-actions").prepend(deleteCardBtn);
 
 // --- Init ---
+setupColumnDropTargets();
 loadProjects();
