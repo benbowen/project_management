@@ -3,21 +3,11 @@ import os
 import re
 import uuid
 from datetime import datetime
-from flask import Flask, abort, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 app = Flask(__name__, static_folder="../frontend", static_url_path="")
 CORS(app)
-
-LOCALHOST_ADDRS = {"127.0.0.1", "::1"}
-
-
-@app.before_request
-def restrict_writes_to_localhost():
-    if request.method in ("GET", "HEAD", "OPTIONS"):
-        return
-    if request.remote_addr not in LOCALHOST_ADDRS:
-        abort(403)
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "../data")
 PROJECTS_INDEX = os.path.join(DATA_DIR, "projects.json")

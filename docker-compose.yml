@@ -1,0 +1,10 @@
+services:
+  kanban:
+    build: .
+    container_name: project_management
+    user: "1000:1000"
+    ports:
+      - "0.0.0.0:5001:5001"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
